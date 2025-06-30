@@ -1,4 +1,4 @@
-import type { Room, RoomId, User, UserId } from "./types"
+import type { CardValue, Room, RoomId, User, UserId } from "./types"
 
 export class RoomManager {
   private rooms = new Map<RoomId, Room>()
@@ -63,7 +63,7 @@ export class RoomManager {
   calculateAverage(room: Room): number | undefined {
     const selectedCards = Array.from(room.users.values())
       .map((user) => user.selectedCard)
-      .filter((card): card is number => card !== undefined)
+      .filter((card): card is CardValue => card !== undefined)
 
     if (selectedCards.length === 0) return undefined
 

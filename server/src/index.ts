@@ -1,8 +1,13 @@
 import { RoomManager } from "./RoomManager"
 import type { ClientToServerMessage, RoomStateUpdate, ServerToClientMessage, User, UserId } from "./types"
+import type { ServerWebSocket } from "bun"
+
+interface WebSocketData {
+  userId?: UserId
+}
 
 const roomManager = new RoomManager()
-const wsConnections = new Map<UserId, WebSocket>()
+const wsConnections = new Map<UserId, ServerWebSocket<WebSocketData>>()
 const userRoomMap = new Map<UserId, string>()
 
 function broadcastToRoom(roomId: string, message: ServerToClientMessage, excludeUserId?: UserId) {
@@ -60,18 +65,18 @@ const server = Bun.serve({
 
       if (await file.exists()) {
         const response = new Response(file)
-        
+
         // Set appropriate Content-Type headers
-        if (filePath.endsWith('.html')) {
-          response.headers.set('Content-Type', 'text/html')
-        } else if (filePath.endsWith('.js')) {
-          response.headers.set('Content-Type', 'application/javascript')
-        } else if (filePath.endsWith('.css')) {
-          response.headers.set('Content-Type', 'text/css')
-        } else if (filePath.endsWith('.svg')) {
-          response.headers.set('Content-Type', 'image/svg+xml')
+        if (filePath.endsWith(".html")) {
+          response.headers.set("Content-Type", "text/html")
+        } else if (filePath.endsWith(".js")) {
+          response.headers.set("Content-Type", "application/javascript")
+        } else if (filePath.endsWith(".css")) {
+          response.headers.set("Content-Type", "text/css")
+        } else if (filePath.endsWith(".svg")) {
+          response.headers.set("Content-Type", "image/svg+xml")
         }
-        
+
         return response
       }
 
@@ -79,7 +84,7 @@ const server = Bun.serve({
       const indexFile = Bun.file("./dist/index.html")
       if (await indexFile.exists()) {
         const response = new Response(indexFile)
-        response.headers.set('Content-Type', 'text/html')
+        response.headers.set("Content-Type", "text/html")
         return response
       }
 
@@ -91,10 +96,10 @@ const server = Bun.serve({
     })
   },
   websocket: {
-    open(ws) {
+    open(ws: ServerWebSocket<WebSocketData>) {
       console.log("WebSocket connection opened")
     },
-    message(ws, message) {
+    message(ws: ServerWebSocket<WebSocketData>, message) {
       try {
         const data = JSON.parse(message.toString()) as ClientToServerMessage
         let userId = ws.data?.userId as UserId | undefined
@@ -256,7 +261,7 @@ const server = Bun.serve({
         ws.send(JSON.stringify(errorMessage))
       }
     },
-    close(ws) {
+    close(ws: ServerWebSocket<WebSocketData>) {
       const userId = ws.data?.userId as UserId | undefined
       if (userId) {
         const roomId = userRoomMap.get(userId)
