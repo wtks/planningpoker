@@ -20,7 +20,7 @@ export function UserCard({ name, hasSelected, selectedCard, isRevealed, isCurren
           isCurrentUser && "ring-2 ring-yellow-400",
         )}
       >
-        {isRevealed && selectedCard !== undefined ? (
+        {(isRevealed || isCurrentUser) && selectedCard !== undefined ? (
           <span className="text-2xl font-bold text-white">{selectedCard}</span>
         ) : hasSelected ? (
           <div className="w-12 h-16 bg-white/20 rounded" />

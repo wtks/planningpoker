@@ -1,5 +1,5 @@
 import type { ClientToServerMessage, ServerToClientMessage } from "@planningpoker/server/types"
-import { useAtom, useSetAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { useEffect, useRef } from "react"
 import {
   countdownEndTimeAtom,
@@ -13,11 +13,14 @@ import {
 export function useWebSocket() {
   const [ws, setWs] = useAtom(wsAtom)
   const setIsConnected = useSetAtom(isConnectedAtom)
+  const userId = useAtomValue(userIdAtom)
   const setUserId = useSetAtom(userIdAtom)
+  const roomState = useAtomValue(roomStateAtom)
   const setRoomState = useSetAtom(roomStateAtom)
   const setSelectedCard = useSetAtom(selectedCardAtom)
   const setCountdownEndTime = useSetAtom(countdownEndTimeAtom)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const userIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     // Only create WebSocket if we don't have one
@@ -39,14 +42,20 @@ export function useWebSocket() {
 
           switch (message.type) {
             case "joined":
+              userIdRef.current = message.userId
               setUserId(message.userId)
               setRoomState(message.roomState)
               break
 
             case "roomUpdate":
               setRoomState(message.roomState)
-              if (!message.roomState.isRevealed) {
-                setSelectedCard(null)
+              // Reset selected card when starting a new round
+              if (!message.roomState.isRevealed && userIdRef.current) {
+                // Check if the current user's card has been reset on the server
+                const currentUser = message.roomState.users.find(u => u.id === userIdRef.current)
+                if (currentUser && !currentUser.hasSelectedCard) {
+                  setSelectedCard(null)
+                }
                 setCountdownEndTime(null)
               }
               break

@@ -142,16 +142,20 @@ export function RoomPage() {
             )}
 
             <div className="flex flex-wrap justify-center gap-6">
-              {roomState.users.map((user) => (
-                <UserCard
-                  key={user.id}
-                  name={user.name}
-                  hasSelected={user.hasSelectedCard}
-                  selectedCard={user.selectedCard}
-                  isRevealed={roomState.isRevealed}
-                  isCurrentUser={user.id === userId}
-                />
-              ))}
+              {roomState.users.map((user) => {
+                const isCurrentUser = user.id === userId
+                const cardToShow = isCurrentUser && selectedCard ? selectedCard : user.selectedCard
+                return (
+                  <UserCard
+                    key={user.id}
+                    name={user.name}
+                    hasSelected={user.hasSelectedCard}
+                    selectedCard={cardToShow}
+                    isRevealed={roomState.isRevealed}
+                    isCurrentUser={isCurrentUser}
+                  />
+                )
+              })}
             </div>
 
             <div className="mt-8 flex justify-center gap-4">
