@@ -33,7 +33,6 @@ export function RoomPage() {
   const isConnected = useAtomValue(isConnectedAtom)
   const [errorMessage, setErrorMessage] = useAtom(errorMessageAtom)
   const { sendMessage } = useWebSocket()
-  const [hasJoined, setHasJoined] = useState(false)
   const [nameInput, setNameInput] = useState(() => loadUserName() || "")
 
   useEffect(() => {
@@ -51,7 +50,6 @@ export function RoomPage() {
         name: userName,
         roomId: storedRoomId,
       })
-      setHasJoined(true)
     }
   }, [isConnected, storedRoomId, userName, sendMessage])
 

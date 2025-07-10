@@ -86,7 +86,7 @@ export function useWebSocket() {
       }
     }
 
-    websocket.onclose = (event) => {
+    websocket.onclose = () => {
       setIsConnected(false)
       setWs(null)
 
