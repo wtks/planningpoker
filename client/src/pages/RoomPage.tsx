@@ -34,6 +34,7 @@ export function RoomPage() {
   const [errorMessage, setErrorMessage] = useAtom(errorMessageAtom)
   const { sendMessage } = useWebSocket()
   const [nameInput, setNameInput] = useState(() => loadUserName() || "")
+  const [hasJoined, setHasJoined] = useState(false)
 
   useEffect(() => {
     if (!roomId || !isValidRoomId(roomId)) {
@@ -44,14 +45,22 @@ export function RoomPage() {
   }, [roomId, navigate, setRoomId])
 
   useEffect(() => {
-    if (isConnected && storedRoomId && userName) {
+    if (isConnected && storedRoomId && userName && !hasJoined) {
       sendMessage({
         type: "join",
         name: userName,
         roomId: storedRoomId,
       })
+      setHasJoined(true)
     }
-  }, [isConnected, storedRoomId, userName, sendMessage])
+  }, [isConnected, storedRoomId, userName, hasJoined, sendMessage])
+
+  // Reset hasJoined when connection is lost
+  useEffect(() => {
+    if (!isConnected && hasJoined) {
+      setHasJoined(false)
+    }
+  }, [isConnected, hasJoined])
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault()
