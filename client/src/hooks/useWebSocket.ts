@@ -19,75 +19,110 @@ export function useWebSocket() {
   const setCountdownEndTime = useSetAtom(countdownEndTimeAtom)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
   const userIdRef = useRef<string | null>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const maxReconnectAttempts = 5
+  const isManuallyClosedRef = useRef(false)
+
+  const connectWebSocket = () => {
+    if (isManuallyClosedRef.current) return
+
+    const wsUrl = import.meta.env.DEV
+      ? "ws://localhost:3001/ws"
+      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
+
+    const websocket = new WebSocket(wsUrl)
+    websocket.onopen = () => {
+      console.log("WebSocket connected")
+      setWs(websocket)
+      setIsConnected(true)
+      reconnectAttemptsRef.current = 0
+    }
+
+    websocket.onmessage = (event) => {
+      try {
+        const message: ServerToClientMessage = JSON.parse(event.data)
+
+        switch (message.type) {
+          case "joined":
+            userIdRef.current = message.userId
+            setUserId(message.userId)
+            setRoomState(message.roomState)
+            // If reconnecting, restore selected card state
+            if (reconnectAttemptsRef.current > 0 && message.roomState.users) {
+              const currentUser = message.roomState.users.find((u) => u.id === message.userId)
+              if (currentUser?.selectedCard) {
+                setSelectedCard(currentUser.selectedCard)
+              }
+            }
+            break
+
+          case "roomUpdate":
+            setRoomState(message.roomState)
+            // Reset selected card when starting a new round
+            if (!message.roomState.isRevealed && userIdRef.current) {
+              // Check if the current user's card has been reset on the server
+              const currentUser = message.roomState.users.find((u) => u.id === userIdRef.current)
+              if (currentUser && !currentUser.hasSelectedCard) {
+                setSelectedCard(null)
+              }
+              setCountdownEndTime(null)
+            }
+            break
+
+          case "countdownStarted":
+            setCountdownEndTime(message.timestamp + 3000)
+            break
+
+          case "error":
+            console.error("Server error:", message.message)
+            break
+        }
+      } catch (error) {
+        console.error("Failed to parse message:", error)
+      }
+    }
+
+    websocket.onclose = (event) => {
+      setIsConnected(false)
+      setWs(null)
+
+      if (!isManuallyClosedRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        reconnectAttemptsRef.current++
+        const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 30000)
+
+        console.log(
+          `WebSocket disconnected. Reconnecting in ${backoffDelay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`,
+        )
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connectWebSocket()
+        }, backoffDelay)
+      } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+        console.error("Max reconnection attempts reached. Please refresh the page.")
+      }
+    }
+
+    websocket.onerror = (error) => {
+      console.error("WebSocket error:", error)
+    }
+
+    return websocket
+  }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Setter functions from atoms don't change
   useEffect(() => {
     // Only create WebSocket if we don't have one
     if (!ws) {
-      const wsUrl = import.meta.env.DEV
-        ? "ws://localhost:3001/ws"
-        : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
-
-      const websocket = new WebSocket(wsUrl)
-
-      websocket.onopen = () => {
-        setWs(websocket)
-        setIsConnected(true)
-      }
-
-      websocket.onmessage = (event) => {
-        try {
-          const message: ServerToClientMessage = JSON.parse(event.data)
-
-          switch (message.type) {
-            case "joined":
-              userIdRef.current = message.userId
-              setUserId(message.userId)
-              setRoomState(message.roomState)
-              break
-
-            case "roomUpdate":
-              setRoomState(message.roomState)
-              // Reset selected card when starting a new round
-              if (!message.roomState.isRevealed && userIdRef.current) {
-                // Check if the current user's card has been reset on the server
-                const currentUser = message.roomState.users.find((u) => u.id === userIdRef.current)
-                if (currentUser && !currentUser.hasSelectedCard) {
-                  setSelectedCard(null)
-                }
-                setCountdownEndTime(null)
-              }
-              break
-
-            case "countdownStarted":
-              setCountdownEndTime(message.timestamp + 3000)
-              break
-
-            case "error":
-              console.error("Server error:", message.message)
-              break
-          }
-        } catch (error) {
-          console.error("Failed to parse message:", error)
-        }
-      }
-
-      websocket.onclose = () => {
-        setIsConnected(false)
-        setWs(null)
-        reconnectTimeoutRef.current = setTimeout(() => {
-          window.location.reload()
-        }, 3000)
-      }
-
-      websocket.onerror = (error) => {
-        console.error("WebSocket error:", error)
-      }
+      connectWebSocket()
     }
 
     return () => {
+      isManuallyClosedRef.current = true
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
+      }
+      if (ws) {
+        ws.close()
       }
     }
   }, [])

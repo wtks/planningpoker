@@ -3,6 +3,7 @@ import { useAtom, useAtomValue } from "jotai"
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Card } from "../components/Card"
+import { ConnectionStatus } from "../components/ConnectionStatus"
 import { Countdown } from "../components/Countdown"
 import { UserCard } from "../components/UserCard"
 import { useWebSocket } from "../hooks/useWebSocket"
@@ -34,7 +35,7 @@ export function RoomPage() {
   }, [roomId, navigate, setRoomId])
 
   useEffect(() => {
-    if (isConnected && storedRoomId && userName && !hasJoined) {
+    if (isConnected && storedRoomId && userName) {
       sendMessage({
         type: "join",
         name: userName,
@@ -42,7 +43,7 @@ export function RoomPage() {
       })
       setHasJoined(true)
     }
-  }, [isConnected, storedRoomId, userName, hasJoined, sendMessage])
+  }, [isConnected, storedRoomId, userName, sendMessage])
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,6 +116,7 @@ export function RoomPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <ConnectionStatus />
       <Countdown />
 
       <header className="bg-white shadow-sm">
