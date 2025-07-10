@@ -3,6 +3,7 @@ import { useAtom, useSetAtom } from "jotai"
 import { useEffect, useRef } from "react"
 import {
   countdownEndTimeAtom,
+  errorMessageAtom,
   isConnectedAtom,
   roomStateAtom,
   selectedCardAtom,
@@ -17,6 +18,7 @@ export function useWebSocket() {
   const setRoomState = useSetAtom(roomStateAtom)
   const setSelectedCard = useSetAtom(selectedCardAtom)
   const setCountdownEndTime = useSetAtom(countdownEndTimeAtom)
+  const setErrorMessage = useSetAtom(errorMessageAtom)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
   const userIdRef = useRef<string | null>(null)
   const reconnectAttemptsRef = useRef(0)
@@ -36,6 +38,7 @@ export function useWebSocket() {
       setWs(websocket)
       setIsConnected(true)
       reconnectAttemptsRef.current = 0
+      setErrorMessage(null)
     }
 
     websocket.onmessage = (event) => {
@@ -75,6 +78,7 @@ export function useWebSocket() {
 
           case "error":
             console.error("Server error:", message.message)
+            setErrorMessage(message.message)
             break
         }
       } catch (error) {
@@ -99,11 +103,15 @@ export function useWebSocket() {
         }, backoffDelay)
       } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
         console.error("Max reconnection attempts reached. Please refresh the page.")
+        setErrorMessage("接続の再試行回数が上限に達しました。ページを更新してください。")
       }
     }
 
     websocket.onerror = (error) => {
       console.error("WebSocket error:", error)
+      if (reconnectAttemptsRef.current === 0) {
+        setErrorMessage("接続エラーが発生しました。再接続を試みています...")
+      }
     }
 
     return websocket
@@ -129,7 +137,17 @@ export function useWebSocket() {
 
   const sendMessage = (message: ClientToServerMessage) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message))
+      try {
+        ws.send(JSON.stringify(message))
+      } catch (error) {
+        console.error("Failed to send message:", error)
+        setErrorMessage("メッセージの送信に失敗しました。")
+      }
+    } else {
+      console.warn("WebSocket is not connected")
+      if (!isManuallyClosedRef.current && reconnectAttemptsRef.current === 0) {
+        setErrorMessage("サーバーに接続されていません。接続を確認しています...")
+      }
     }
   }
 

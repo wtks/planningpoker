@@ -106,6 +106,34 @@ const server = Bun.serve({
 
         switch (data.type) {
           case "join": {
+            // Validate input
+            if (!data.name || data.name.trim().length === 0) {
+              const errorMsg: ServerToClientMessage = {
+                type: "error",
+                message: "名前を入力してください。",
+              }
+              ws.send(JSON.stringify(errorMsg))
+              return
+            }
+
+            if (data.name.trim().length > 20) {
+              const errorMsg: ServerToClientMessage = {
+                type: "error",
+                message: "名前は20文字以内で入力してください。",
+              }
+              ws.send(JSON.stringify(errorMsg))
+              return
+            }
+
+            if (!data.roomId || data.roomId.length !== 6) {
+              const errorMsg: ServerToClientMessage = {
+                type: "error",
+                message: "無効なルームIDです。",
+              }
+              ws.send(JSON.stringify(errorMsg))
+              return
+            }
+
             userId = generateUserId()
             ws.data = { userId }
             wsConnections.set(userId, ws)
@@ -113,7 +141,7 @@ const server = Bun.serve({
 
             const user: User = {
               id: userId,
-              name: data.name,
+              name: data.name.trim(),
             }
             roomManager.addUserToRoom(data.roomId, user)
 
@@ -136,16 +164,41 @@ const server = Bun.serve({
           }
 
           case "selectCard": {
-            if (!userId) return
+            if (!userId) {
+              const errorMsg: ServerToClientMessage = {
+                type: "error",
+                message: "セッションが無効です。再度ルームに参加してください。",
+              }
+              ws.send(JSON.stringify(errorMsg))
+              return
+            }
 
             const roomId = userRoomMap.get(userId)
-            if (!roomId) return
+            if (!roomId) {
+              const errorMsg: ServerToClientMessage = {
+                type: "error",
+                message: "ルームが見つかりません。",
+              }
+              ws.send(JSON.stringify(errorMsg))
+              return
+            }
 
             const room = roomManager.getRoom(roomId)
             if (!room) return
 
             const user = room.users.get(userId)
             if (!user) return
+
+            // Validate card value
+            const validCards = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
+            if (data.card !== null && !validCards.includes(data.card)) {
+              const errorMsg: ServerToClientMessage = {
+                type: "error",
+                message: "無効なカード値です。",
+              }
+              ws.send(JSON.stringify(errorMsg))
+              return
+            }
 
             user.selectedCard = data.card
 

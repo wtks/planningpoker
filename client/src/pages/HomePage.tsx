@@ -5,6 +5,7 @@ import { generateRoomId, isValidRoomId } from "../utils/roomId"
 export function HomePage() {
   const navigate = useNavigate()
   const [roomId, setRoomId] = useState("")
+  const [error, setError] = useState("")
 
   const handleCreateRoom = () => {
     const newRoomId = generateRoomId()
@@ -14,9 +15,15 @@ export function HomePage() {
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault()
     const formattedRoomId = roomId.toUpperCase().trim()
-    if (isValidRoomId(formattedRoomId)) {
-      navigate(`/room/${formattedRoomId}`)
+    if (!formattedRoomId) {
+      setError("ルームコードを入力してください。")
+      return
     }
+    if (!isValidRoomId(formattedRoomId)) {
+      setError("正しいルームコードを入力してください（6文字の英数字）")
+      return
+    }
+    navigate(`/room/${formattedRoomId}`)
   }
 
   return (
@@ -54,14 +61,19 @@ export function HomePage() {
               <input
                 type="text"
                 value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
+                onChange={(e) => {
+                  setRoomId(e.target.value)
+                  setError("")
+                }}
                 placeholder="Enter room code (e.g., ABC123)"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none uppercase"
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none uppercase ${
+                  error ? "border-red-300" : "border-gray-300"
+                }`}
                 maxLength={6}
               />
+              {error && <p className="text-sm text-red-600">{error}</p>}
               <button
                 type="submit"
-                disabled={!isValidRoomId(roomId.toUpperCase().trim())}
                 className="w-full bg-gray-900 text-white rounded-lg px-4 py-3 font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 Join Room

@@ -5,9 +5,18 @@ import { useNavigate, useParams } from "react-router-dom"
 import { Card } from "../components/Card"
 import { ConnectionStatus } from "../components/ConnectionStatus"
 import { Countdown } from "../components/Countdown"
+import { ErrorMessage } from "../components/ErrorMessage"
 import { UserCard } from "../components/UserCard"
 import { useWebSocket } from "../hooks/useWebSocket"
-import { isConnectedAtom, roomIdAtom, roomStateAtom, selectedCardAtom, userIdAtom, userNameAtom } from "../store/atoms"
+import {
+  errorMessageAtom,
+  isConnectedAtom,
+  roomIdAtom,
+  roomStateAtom,
+  selectedCardAtom,
+  userIdAtom,
+  userNameAtom,
+} from "../store/atoms"
 import { loadUserName, saveUserName } from "../utils/localStorage"
 import { isValidRoomId } from "../utils/roomId"
 
@@ -22,6 +31,7 @@ export function RoomPage() {
   const userId = useAtomValue(userIdAtom)
   const roomState = useAtomValue(roomStateAtom)
   const isConnected = useAtomValue(isConnectedAtom)
+  const [errorMessage, setErrorMessage] = useAtom(errorMessageAtom)
   const { sendMessage } = useWebSocket()
   const [hasJoined, setHasJoined] = useState(false)
   const [nameInput, setNameInput] = useState(() => loadUserName() || "")
@@ -117,6 +127,7 @@ export function RoomPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <ConnectionStatus />
+      {errorMessage && <ErrorMessage message={errorMessage} onClose={() => setErrorMessage(null)} />}
       <Countdown />
 
       <header className="bg-white shadow-sm">
