@@ -1,6 +1,6 @@
+import type { ServerWebSocket } from "bun"
 import { RoomManager } from "./RoomManager"
 import type { ClientToServerMessage, RoomStateUpdate, ServerToClientMessage, User, UserId } from "./types"
-import type { ServerWebSocket } from "bun"
 
 interface WebSocketData {
   userId?: UserId
