@@ -35,7 +35,9 @@ export class ErrorBoundary extends Component<Props, State> {
                 stroke="currentColor"
                 viewBox="0 0 24 24"
                 xmlns="http://www.w3.org/2000/svg"
+                aria-label="エラーアイコン"
               >
+                <title>エラーアイコン</title>
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
