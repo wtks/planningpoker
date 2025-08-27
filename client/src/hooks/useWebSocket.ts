@@ -24,6 +24,7 @@ export function useWebSocket() {
   const reconnectAttemptsRef = useRef(0)
   const maxReconnectAttempts = 5
   const isManuallyClosedRef = useRef(false)
+  const pingIntervalRef = useRef<NodeJS.Timeout>()
 
   const connectWebSocket = () => {
     if (isManuallyClosedRef.current) return
@@ -39,6 +40,14 @@ export function useWebSocket() {
       setIsConnected(true)
       reconnectAttemptsRef.current = 0
       setErrorMessage(null)
+
+      // Start sending pings
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current)
+      }
+      pingIntervalRef.current = setInterval(() => {
+        sendMessage({ type: "ping" })
+      }, 30000)
     }
 
     websocket.onmessage = (event) => {
@@ -79,6 +88,10 @@ export function useWebSocket() {
           case "error":
             console.error("Server error:", message.message)
             setErrorMessage(message.message)
+            break
+
+          case "pong":
+            // console.log("Received pong")
             break
         }
       } catch (error) {
@@ -128,6 +141,9 @@ export function useWebSocket() {
       isManuallyClosedRef.current = true
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current)
       }
       if (ws) {
         ws.close()

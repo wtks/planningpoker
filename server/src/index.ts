@@ -18,7 +18,12 @@ function broadcastToRoom(roomId: string, message: ServerToClientMessage, exclude
     if (userId === excludeUserId) continue
     const ws = wsConnections.get(userId)
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message))
+      try {
+        ws.send(JSON.stringify(message))
+      } catch (error) {
+        console.error(`Failed to send message to user ${userId}:`, error)
+        // Optionally, handle failed sends, e.g., by removing the user
+      }
     }
   }
 }
@@ -220,14 +225,18 @@ const server = Bun.serve({
               broadcastToRoom(roomId, countdownMessage)
 
               setTimeout(() => {
-                room.isRevealed = true
-                const revealedState = getRoomStateUpdate(roomId)
-                if (revealedState) {
-                  const revealMessage: ServerToClientMessage = {
-                    type: "roomUpdate",
-                    roomState: revealedState,
+                try {
+                  room.isRevealed = true
+                  const revealedState = getRoomStateUpdate(roomId)
+                  if (revealedState) {
+                    const revealMessage: ServerToClientMessage = {
+                      type: "roomUpdate",
+                      roomState: revealedState,
+                    }
+                    broadcastToRoom(roomId, revealMessage)
                   }
-                  broadcastToRoom(roomId, revealMessage)
+                } catch (error) {
+                  console.error("Error in selectCard reveal timeout:", error)
                 }
               }, 3000)
             }
@@ -251,14 +260,18 @@ const server = Bun.serve({
             broadcastToRoom(roomId, countdownMessage)
 
             setTimeout(() => {
-              room.isRevealed = true
-              const roomState = getRoomStateUpdate(roomId)
-              if (roomState) {
-                const updateMessage: ServerToClientMessage = {
-                  type: "roomUpdate",
-                  roomState,
+              try {
+                room.isRevealed = true
+                const roomState = getRoomStateUpdate(roomId)
+                if (roomState) {
+                  const updateMessage: ServerToClientMessage = {
+                    type: "roomUpdate",
+                    roomState,
+                  }
+                  broadcastToRoom(roomId, updateMessage)
                 }
-                broadcastToRoom(roomId, updateMessage)
+              } catch (error) {
+                console.error("Error in revealCards timeout:", error)
               }
             }, 3000)
             break
@@ -304,6 +317,12 @@ const server = Bun.serve({
             ws.close()
             break
           }
+
+          case "ping": {
+            const pong: ServerToClientMessage = { type: "pong" }
+            ws.send(JSON.stringify(pong))
+            break
+          }
         }
       } catch (error) {
         console.error("Error handling message:", error)
@@ -334,6 +353,7 @@ const server = Bun.serve({
         }
       }
     },
+    idleTimeout: 60,
   },
 })
 

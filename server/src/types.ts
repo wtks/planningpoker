@@ -34,6 +34,9 @@ export type ClientToServerMessage =
   | {
       type: "leave"
     }
+  | {
+      type: "ping"
+    }
 
 export type ServerToClientMessage =
   | {
@@ -52,6 +55,9 @@ export type ServerToClientMessage =
   | {
       type: "error"
       message: string
+    }
+  | {
+      type: "pong"
     }
 
 export interface RoomStateUpdate {
