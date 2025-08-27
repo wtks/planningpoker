@@ -25,6 +25,7 @@ export function useWebSocket() {
   const maxReconnectAttempts = 5
   const isManuallyClosedRef = useRef(false)
   const pingIntervalRef = useRef<NodeJS.Timeout>()
+  const messageQueueRef = useRef<ClientToServerMessage[]>([])
 
   const connectWebSocket = () => {
     if (isManuallyClosedRef.current) return
@@ -40,6 +41,21 @@ export function useWebSocket() {
       setIsConnected(true)
       reconnectAttemptsRef.current = 0
       setErrorMessage(null)
+
+      // Send any queued messages
+      while (messageQueueRef.current.length > 0) {
+        const message = messageQueueRef.current.shift()
+        if (message) {
+          try {
+            websocket.send(JSON.stringify(message))
+          } catch (error) {
+            console.error("Failed to send queued message:", error)
+            messageQueueRef.current.unshift(message) // Re-queue on failure
+            setErrorMessage("メッセージの送信に失敗しました。")
+            break // Stop processing queue if a message fails
+          }
+        }
+      }
 
       // Start sending pings
       if (pingIntervalRef.current) {
@@ -160,7 +176,19 @@ export function useWebSocket() {
         setErrorMessage("メッセージの送信に失敗しました。")
       }
     } else {
-      console.warn("WebSocket is not connected")
+      // Don't show error for ping, just drop it if not connected
+      if (message.type === "ping") {
+        return
+      }
+
+      console.warn("WebSocket is not connected, queuing message.")
+      messageQueueRef.current.push(message)
+
+      // If the connection is closed or not yet initiated, try to connect
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        connectWebSocket()
+      }
+
       if (!isManuallyClosedRef.current && reconnectAttemptsRef.current === 0) {
         setErrorMessage("サーバーに接続されていません。接続を確認しています...")
       }
