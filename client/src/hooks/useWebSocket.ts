@@ -121,7 +121,7 @@ export function useWebSocket() {
 
       if (!isManuallyClosedRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
         reconnectAttemptsRef.current++
-        const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 30000)
+        const backoffDelay = Math.min(1000 * 2 ** (reconnectAttemptsRef.current - 1), 30000)
 
         console.log(
           `WebSocket disconnected. Reconnecting in ${backoffDelay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`,
