@@ -1,7 +1,10 @@
 {
   "name": "planningpoker",
   "private": true,
-  "workspaces": ["server", "client"],
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
     "dev:server": "cd server && bun run dev",
@@ -13,7 +16,7 @@
     "check": "biome check --write ."
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.3",
-    "concurrently": "^9.1.2"
+    "@biomejs/biome": "^2.4.12",
+    "concurrently": "^9.2.1"
   }
 }

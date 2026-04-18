@@ -19,12 +19,12 @@ export function useWebSocket(roomId: string | null) {
   const setSelectedCard = useSetAtom(selectedCardAtom)
   const setCountdownEndTime = useSetAtom(countdownEndTimeAtom)
   const setErrorMessage = useSetAtom(errorMessageAtom)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const userIdRef = useRef<string | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const maxReconnectAttempts = 5
   const isManuallyClosedRef = useRef(false)
-  const pingIntervalRef = useRef<NodeJS.Timeout>()
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const messageQueueRef = useRef<ClientToServerMessage[]>([])
   const roomIdRef = useRef<string | null>(roomId)
   roomIdRef.current = roomId

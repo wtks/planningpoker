@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Full stack (Vite + Wrangler)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "Vite client only",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev:client"],
+      "port": 5173
+    },
+    {
+      "name": "Wrangler (Cloudflare Worker + Durable Object)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev:server"],
+      "port": 8787
+    }
+  ]
+}

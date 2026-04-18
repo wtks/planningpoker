@@ -1,6 +1,6 @@
-import {DurableObject} from "cloudflare:workers"
-import {allUsersSelected, buildRoomStateUpdate, findUserIdByClientId, isValidCard} from "./roomLogic"
-import type {ClientToServerMessage, PersistedRoomState, ServerToClientMessage, StoredUser, UserId} from "./types"
+import { DurableObject } from "cloudflare:workers"
+import { allUsersSelected, buildRoomStateUpdate, findUserIdByClientId, isValidCard } from "./roomLogic"
+import type { ClientToServerMessage, PersistedRoomState, ServerToClientMessage, StoredUser, UserId } from "./types"
 
 interface Attachment {
   userId: UserId
