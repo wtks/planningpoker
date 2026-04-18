@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## Common Development Commands
 
@@ -11,81 +11,106 @@ bun install
 
 ### Development
 ```bash
-# Start both frontend and backend dev servers
+# Both Vite (5173) and Wrangler (8787) concurrently
 bun run dev
 
-# Start only backend WebSocket server (port 3001)
+# Wrangler only — Cloudflare Worker + Durable Object on :8787
 bun run dev:server
 
-# Start only frontend Vite server (port 5173)
+# Vite only — React frontend on :5173 (proxies /ws to :8787)
 bun run dev:client
 ```
 
-### Build & Production
+### Build & Deploy
 ```bash
-# Build frontend static files
+# Build client static assets into client/dist
 bun run build
 
-# Start production server (serves both WebSocket and static files)
-NODE_ENV=production bun run start
+# Build + wrangler deploy (requires `bunx wrangler login` first time)
+bun run deploy
 ```
 
 ### Code Quality
 ```bash
-# Format code with Biome
-bun run format
+bun run format   # biome format --write .
+bun run lint     # biome lint .
+bun run check    # biome check --write . (format + lint + organizeImports)
+```
 
-# Run linting checks
-bun run lint
+### Type / Worker checks
+```bash
+# Regenerate server/worker-configuration.d.ts from wrangler.jsonc
+cd server && bun run cf-typegen
 
-# Run all checks (format + lint)
-bun run check
+# Typecheck
+cd server && bunx tsc --noEmit
+cd client && bunx tsc --noEmit
 ```
 
 ## Architecture Overview
 
-This is a real-time Planning Poker application built with Bun, React, and WebSockets. The architecture follows a monorepo structure with shared types between client and server.
+Real-time Planning Poker on Cloudflare Workers. Bun workspaces (`client`, `server`) share TypeScript types via the `@planningpoker/server/types` subpath export.
 
 ### Key Design Decisions
 
-1. **No Database**: All state is managed in-memory on the server. Rooms are automatically cleaned up when empty.
+1. **One Durable Object per room** — the Worker routes `/ws?roomId=XXX` to a DO whose ID is `env.ROOM.idFromName(roomId)`. Rooms are naturally sharded; there is no cross-room state.
 
-2. **Type Safety**: Uses Bun workspaces to share TypeScript types between client and server via the `@planningpoker/server` package.
+2. **WebSocket Hibernation API** — `ctx.acceptWebSocket(server)` lets the JS instance be evicted while sockets stay open. Incoming messages rehydrate the DO via `webSocketMessage()`.
 
-3. **Real-time Communication**: WebSocket-based with defined message types in `server/src/types.ts`:
-   - Client → Server: join, selectCard, revealCards, nextRound, leave
-   - Server → Client: joined, roomUpdate, countdownStarted, error
+3. **Hibernation-safe 3-second reveal** — the countdown uses `ctx.storage.setAlarm(Date.now() + 3000)` with an `alarm()` handler. `setTimeout` would be lost across hibernation; alarms are persisted and fire reliably.
 
-4. **State Management**: 
-   - Server: In-memory `RoomManager` class manages rooms and users
-   - Client: Jotai atoms for reactive state management
+4. **Per-socket identity via attachments** — `ws.serializeAttachment({ userId, clientId })` avoids a userId→socket map and survives hibernation.
 
-### WebSocket Flow
+5. **Broadcast via `ctx.getWebSockets()`** — returns hibernated sockets too; `ws.send()` wakes them.
 
-1. User enters name and room ID → Client sends `join` message
-2. Server creates/joins room → Sends `joined` with initial state
-3. User selects card → Client sends `selectCard`
-4. All users selected or someone clicks reveal → Server sends `countdownStarted`
-5. After 3 seconds → Server reveals cards and sends `roomUpdate`
-6. Users can change cards even after reveal → Real-time updates via `roomUpdate`
-7. Anyone clicks "Next Round" → Server resets and sends fresh `roomUpdate`
+6. **Ping/pong auto-response** — `ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_FRAME, PONG_FRAME))` answers client keepalives without waking the DO. The `case "ping"` in `webSocketMessage` is only a safety net.
+
+7. **Static assets via Workers Assets binding** — the same Worker serves `client/dist` via `env.ASSETS.fetch(request)`. SPA routing uses `not_found_handling: "single-page-application"`.
+
+8. **Stable client identity** — `client/src/utils/clientId.ts` stores a UUID in `localStorage` and attaches it to every `join`. If a reconnect hits the DO before `webSocketClose` fires, the same `userId` is reused so `selectedCard` isn't lost.
+
+9. **Persisted state** — the DO stores `{ users: Record<UserId, StoredUser>, isRevealed, countdownStartedAt? }` under a single `"state"` key (SQLite-backed DO class). Reloaded in the constructor via `ctx.blockConcurrencyWhile`. When the last user leaves, `ctx.storage.deleteAll()` cleans up.
+
+### WebSocket Protocol
+
+Messages (`server/src/types.ts`):
+
+- **Client → Server**: `join` (with `clientId`), `selectCard`, `revealCards`, `nextRound`, `leave`, `ping`
+- **Server → Client**: `joined`, `roomUpdate`, `countdownStarted`, `error`, `pong`
+
+Flow:
+
+1. Client opens `/ws?roomId=XXXXXX` → Worker routes to DO → DO `acceptWebSocket`
+2. Client sends `join` with `{ name, roomId, clientId }` → DO validates, assigns/reuses `userId`, `serializeAttachment`, replies `joined` + broadcasts `roomUpdate`
+3. `selectCard` broadcasts `roomUpdate`. When `userCount > 1 && allUsersSelected`, DO sets an alarm and broadcasts `countdownStarted`
+4. `alarm()` fires 3s later → sets `isRevealed = true` → broadcasts `roomUpdate` with `average`
+5. `nextRound` clears selections, cancels any pending alarm, broadcasts fresh `roomUpdate`
+6. `webSocketClose` / `webSocketError` removes the user and broadcasts. If the room empties, storage is wiped
 
 ### Project Structure
 
-- `/client` - React frontend with Vite
-  - `/src/hooks/useWebSocket.ts` - WebSocket connection management
-  - `/src/store/atoms.ts` - Jotai state atoms
-  - `/src/pages/` - HomePage and RoomPage components
-  - `/src/components/` - Card, UserCard, Countdown components
+- `/client` — React + Vite + Tailwind v4
+  - `src/hooks/useWebSocket.ts` — connection, reconnect backoff, ping, message queue (accepts `roomId`)
+  - `src/utils/clientId.ts` — persistent client identity
+  - `src/store/atoms.ts` — Jotai atoms
+  - `src/pages/{HomePage,RoomPage}.tsx`
+  - `src/components/` — Card, UserCard, Countdown, ConnectionStatus, ErrorMessage, ErrorBoundary
 
-- `/server` - Bun WebSocket server
-  - `/src/types.ts` - Shared TypeScript types (exported)
-  - `/src/RoomManager.ts` - Room state management
-  - `/src/index.ts` - WebSocket server and static file serving
+- `/server` — Cloudflare Worker
+  - `src/index.ts` — Worker `fetch` (router): `/ws?roomId=XXX` → DO, else `env.ASSETS`
+  - `src/Room.ts` — `Room` Durable Object (hibernation, alarm, broadcast, storage)
+  - `src/roomLogic.ts` — pure helpers: `validateJoinPayload`, `allUsersSelected`, `calculateAverage`, `buildRoomStateUpdate`, `findUserIdByClientId`, `isValidCard`, `ROOM_ID_PATTERN`
+  - `src/types.ts` — shared types (re-exported via `@planningpoker/server/types`)
+  - `wrangler.jsonc` — Worker config, DO binding, Assets binding, `[[migrations]]` with `new_sqlite_classes`
+  - `worker-configuration.d.ts` — generated by `wrangler types`; commit it so CI can typecheck without wrangler
 
 ### Development Notes
 
-- Frontend connects to `ws://localhost:3001/ws` in dev, or relative WebSocket URL in production
-- Room IDs are 6-character alphanumeric codes generated client-side
-- Card values follow Fibonacci sequence: 1, 2, 3, 5, 8, 13, 21, 34, 55, 89
-- Biome is configured for formatting (2 spaces, double quotes) and linting
+- Dev: Vite proxies `/ws` to `ws://localhost:8787`, so the client URL stays same-origin (`ws://localhost:5173/ws?roomId=XXX`)
+- Prod: same-origin `wss://<host>/ws?roomId=XXX`; the Worker handles both upgrades and assets
+- Room IDs are 6-char alphanumeric (`ROOM_ID_PATTERN = /^[A-Za-z0-9]{6}$/`); validated at the Worker router and again in `validateJoinPayload`
+- Card values: Fibonacci `1, 2, 3, 5, 8, 13, 21, 34, 55, 89` (see `VALID_CARDS` in `roomLogic.ts`)
+- Biome v2 config (`biome.json`): 2-space indent, double quotes, no semicolons, 120-col width. `server/worker-configuration.d.ts` is excluded from linting
+- Do **not** use `setTimeout` for game-loop timing in the DO — always use `ctx.storage.setAlarm`
+- Do **not** keep per-socket state in a Map in memory — use `ws.serializeAttachment` so it survives hibernation
+- Local `wrangler dev` does NOT actually evict the JS instance; real hibernation only happens in deployed Workers. Use `wrangler tail` on a deployed Worker to verify hibernation-related paths
