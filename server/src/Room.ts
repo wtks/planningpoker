@@ -1,6 +1,12 @@
 import { DurableObject } from "cloudflare:workers"
-import { allUsersSelected, buildRoomStateUpdate, findUserIdByClientId, isValidCard } from "./roomLogic"
-import type { ClientToServerMessage, PersistedRoomState, ServerToClientMessage, StoredUser, UserId } from "./types"
+import {
+  allUsersSelected,
+  buildRoomStateUpdate,
+  findUserIdByClientId,
+  isValidCard,
+  validateJoinPayload,
+} from "./roomLogic"
+import type { ClientToServerMessage, PersistedRoomState, ServerToClientMessage, UserId } from "./types"
 
 interface Attachment {
   userId: UserId
@@ -28,9 +34,7 @@ export class Room extends DurableObject<Env> {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected websocket", { status: 426 })
     }
-    const pair = new WebSocketPair()
-    const client = pair[0]
-    const server = pair[1]
+    const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket]
     this.ctx.acceptWebSocket(server)
     return new Response(null, { status: 101, webSocket: client })
   }
@@ -41,78 +45,55 @@ export class Room extends DurableObject<Env> {
     try {
       data = JSON.parse(raw) as ClientToServerMessage
     } catch {
-      this.sendError(ws, "Invalid message")
-      return
+      return this.sendError(ws, "Invalid message")
     }
 
     switch (data.type) {
       case "join":
-        await this.handleJoin(ws, data)
-        return
+        return this.handleJoin(ws, data)
       case "selectCard":
-        await this.handleSelectCard(ws, data.card)
-        return
+        return this.handleSelectCard(ws, data.card)
       case "revealCards":
-        await this.handleReveal()
-        return
+        return this.handleReveal()
       case "nextRound":
-        await this.handleNextRound()
-        return
+        return this.handleNextRound()
       case "leave":
-        await this.handleLeave(ws)
-        return
+        return this.handleLeave(ws)
       case "ping":
-        this.sendTo(ws, { type: "pong" })
-        return
+        // Normally handled by setWebSocketAutoResponse without waking the DO; safety net.
+        return this.sendTo(ws, { type: "pong" })
     }
   }
 
-  async webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean) {
+  async webSocketClose(ws: WebSocket) {
     await this.removeUserForSocket(ws)
   }
 
-  async webSocketError(ws: WebSocket, _error: unknown) {
+  async webSocketError(ws: WebSocket) {
     await this.removeUserForSocket(ws)
   }
 
   async alarm() {
-    if (this.room.isRevealed) return
-    if (Object.keys(this.room.users).length === 0) return
+    if (this.room.isRevealed || this.userCount === 0) return
     this.room.isRevealed = true
     this.room.countdownStartedAt = undefined
     await this.persist()
-    this.broadcast({ type: "roomUpdate", roomState: buildRoomStateUpdate(this.room) })
+    this.broadcastRoomState()
   }
 
   // ---------------- handlers ----------------
 
   private async handleJoin(ws: WebSocket, data: Extract<ClientToServerMessage, { type: "join" }>) {
-    const name = data.name.trim()
-    if (name.length === 0) {
-      this.sendError(ws, "名前を入力してください。")
-      return
-    }
-    if (name.length > 20) {
-      this.sendError(ws, "名前は20文字以内で入力してください。")
-      return
-    }
-    if (!data.roomId || data.roomId.length !== 6) {
-      this.sendError(ws, "無効なルームIDです。")
-      return
-    }
-    if (!data.clientId) {
-      this.sendError(ws, "無効なクライアントIDです。")
-      return
-    }
+    const result = validateJoinPayload(data)
+    if ("error" in result) return this.sendError(ws, result.error)
 
     // Reuse existing user if clientId already present (rapid reconnect race before webSocketClose fires).
     let userId = findUserIdByClientId(this.room, data.clientId)
     if (userId) {
-      this.room.users[userId].name = name
+      this.room.users[userId].name = result.name
     } else {
       userId = crypto.randomUUID()
-      const user: StoredUser = { id: userId, name, clientId: data.clientId }
-      this.room.users[userId] = user
+      this.room.users[userId] = { id: userId, name: result.name, clientId: data.clientId }
     }
 
     ws.serializeAttachment({ userId, clientId: data.clientId } satisfies Attachment)
@@ -125,31 +106,24 @@ export class Room extends DurableObject<Env> {
 
   private async handleSelectCard(ws: WebSocket, card: unknown) {
     const att = this.getAttachment(ws)
-    if (!att) {
-      this.sendError(ws, "セッションが無効です。再度ルームに参加してください。")
-      return
-    }
+    if (!att) return this.sendError(ws, "セッションが無効です。再度ルームに参加してください。")
+
     const user = this.room.users[att.userId]
-    if (!user) {
-      this.sendError(ws, "ユーザーが見つかりません。")
-      return
-    }
-    if (card !== null && !isValidCard(card)) {
-      this.sendError(ws, "無効なカード値です。")
-      return
-    }
+    if (!user) return this.sendError(ws, "ユーザーが見つかりません。")
+
+    if (card !== null && !isValidCard(card)) return this.sendError(ws, "無効なカード値です。")
+
     user.selectedCard = card === null ? undefined : card
     await this.persist()
-    this.broadcast({ type: "roomUpdate", roomState: buildRoomStateUpdate(this.room) })
+    this.broadcastRoomState()
 
-    if (!this.room.isRevealed && allUsersSelected(this.room) && Object.keys(this.room.users).length > 1) {
+    if (!this.room.isRevealed && this.userCount > 1 && allUsersSelected(this.room)) {
       await this.startCountdown()
     }
   }
 
   private async handleReveal() {
-    if (this.room.isRevealed) return
-    if (Object.keys(this.room.users).length === 0) return
+    if (this.room.isRevealed || this.userCount === 0) return
     await this.startCountdown()
   }
 
@@ -161,7 +135,7 @@ export class Room extends DurableObject<Env> {
     }
     await this.ctx.storage.deleteAlarm()
     await this.persist()
-    this.broadcast({ type: "roomUpdate", roomState: buildRoomStateUpdate(this.room) })
+    this.broadcastRoomState()
   }
 
   private async handleLeave(ws: WebSocket) {
@@ -175,6 +149,10 @@ export class Room extends DurableObject<Env> {
 
   // ---------------- helpers ----------------
 
+  private get userCount(): number {
+    return Object.keys(this.room.users).length
+  }
+
   private async startCountdown() {
     this.room.countdownStartedAt = Date.now()
     await this.ctx.storage.setAlarm(Date.now() + COUNTDOWN_MS)
@@ -184,17 +162,17 @@ export class Room extends DurableObject<Env> {
 
   private async removeUserForSocket(ws: WebSocket) {
     const att = this.getAttachment(ws)
-    if (!att) return
-    if (!this.room.users[att.userId]) return
+    if (!att || !this.room.users[att.userId]) return
     delete this.room.users[att.userId]
-    if (Object.keys(this.room.users).length === 0) {
+
+    if (this.userCount === 0) {
       await this.ctx.storage.deleteAlarm()
       await this.ctx.storage.deleteAll()
       this.room = { users: {}, isRevealed: false }
       return
     }
     await this.persist()
-    this.broadcast({ type: "roomUpdate", roomState: buildRoomStateUpdate(this.room) })
+    this.broadcastRoomState()
   }
 
   private getAttachment(ws: WebSocket): Attachment | null {
@@ -203,13 +181,14 @@ export class Room extends DurableObject<Env> {
     return raw as Attachment
   }
 
+  private broadcastRoomState() {
+    this.broadcast({ type: "roomUpdate", roomState: buildRoomStateUpdate(this.room) })
+  }
+
   private broadcast(message: ServerToClientMessage, excludeUserId?: UserId) {
     const payload = JSON.stringify(message)
     for (const ws of this.ctx.getWebSockets()) {
-      if (excludeUserId) {
-        const att = this.getAttachment(ws)
-        if (att?.userId === excludeUserId) continue
-      }
+      if (excludeUserId && this.getAttachment(ws)?.userId === excludeUserId) continue
       try {
         ws.send(payload)
       } catch {

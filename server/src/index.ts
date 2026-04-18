@@ -1,8 +1,7 @@
 import { Room } from "./Room"
+import { ROOM_ID_PATTERN } from "./roomLogic"
 
 export { Room }
-
-const ROOM_ID_PATTERN = /^[A-Za-z0-9]{6}$/
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -16,9 +15,7 @@ export default {
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("Expected websocket", { status: 426 })
       }
-      const id = env.ROOM.idFromName(roomId)
-      const stub = env.ROOM.get(id)
-      return stub.fetch(request)
+      return env.ROOM.get(env.ROOM.idFromName(roomId)).fetch(request)
     }
 
     return env.ASSETS.fetch(request)

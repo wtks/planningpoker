@@ -11,6 +11,18 @@ import {
   wsAtom,
 } from "../store/atoms"
 
+const MAX_RECONNECT_ATTEMPTS = 5
+const RECONNECT_MAX_DELAY_MS = 30_000
+const PING_INTERVAL_MS = 30_000
+const COUNTDOWN_MS = 3_000
+
+function buildWsUrl(roomId: string): string {
+  const query = `?roomId=${encodeURIComponent(roomId)}`
+  if (import.meta.env.DEV) return `ws://localhost:5173/ws${query}`
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+  return `${proto}//${window.location.host}/ws${query}`
+}
+
 export function useWebSocket(roomId: string | null) {
   const [ws, setWs] = useAtom(wsAtom)
   const setIsConnected = useSetAtom(isConnectedAtom)
@@ -22,7 +34,6 @@ export function useWebSocket(roomId: string | null) {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const userIdRef = useRef<string | null>(null)
   const reconnectAttemptsRef = useRef(0)
-  const maxReconnectAttempts = 5
   const isManuallyClosedRef = useRef(false)
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const messageQueueRef = useRef<ClientToServerMessage[]>([])
@@ -34,12 +45,7 @@ export function useWebSocket(roomId: string | null) {
     const currentRoomId = roomIdRef.current
     if (!currentRoomId) return
 
-    const query = `?roomId=${encodeURIComponent(currentRoomId)}`
-    const wsUrl = import.meta.env.DEV
-      ? `ws://localhost:5173/ws${query}`
-      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws${query}`
-
-    const websocket = new WebSocket(wsUrl)
+    const websocket = new WebSocket(buildWsUrl(currentRoomId))
     websocket.onopen = () => {
       console.log("WebSocket connected")
       setWs(websocket)
@@ -68,7 +74,7 @@ export function useWebSocket(roomId: string | null) {
       }
       pingIntervalRef.current = setInterval(() => {
         sendMessage({ type: "ping" })
-      }, 30000)
+      }, PING_INTERVAL_MS)
     }
 
     websocket.onmessage = (event) => {
@@ -103,7 +109,7 @@ export function useWebSocket(roomId: string | null) {
             break
 
           case "countdownStarted":
-            setCountdownEndTime(message.timestamp + 3000)
+            setCountdownEndTime(message.timestamp + COUNTDOWN_MS)
             break
 
           case "error":
@@ -124,18 +130,18 @@ export function useWebSocket(roomId: string | null) {
       setIsConnected(false)
       setWs(null)
 
-      if (!isManuallyClosedRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
+      if (!isManuallyClosedRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttemptsRef.current++
-        const backoffDelay = Math.min(1000 * 2 ** (reconnectAttemptsRef.current - 1), 30000)
+        const backoffDelay = Math.min(1000 * 2 ** (reconnectAttemptsRef.current - 1), RECONNECT_MAX_DELAY_MS)
 
         console.log(
-          `WebSocket disconnected. Reconnecting in ${backoffDelay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`,
+          `WebSocket disconnected. Reconnecting in ${backoffDelay}ms (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`,
         )
 
         reconnectTimeoutRef.current = setTimeout(() => {
           connectWebSocket()
         }, backoffDelay)
-      } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+      } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
         console.error("Max reconnection attempts reached. Please refresh the page.")
         setErrorMessage("接続の再試行回数が上限に達しました。ページを更新してください。")
       }

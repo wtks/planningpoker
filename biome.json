@@ -6,7 +6,7 @@
       "!**/node_modules",
       "!**/dist",
       "!**/build",
-      "!**/.next",
+      "!**/.wrangler",
       "!**/coverage",
       "!**/server/worker-configuration.d.ts"
     ]
