@@ -41,3 +41,6 @@ Thumbs.db
 # Misc
 .cache/
 .temp/
+
+# Wrangler / Cloudflare local state
+.wrangler/

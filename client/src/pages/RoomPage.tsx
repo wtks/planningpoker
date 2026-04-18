@@ -17,6 +17,7 @@ import {
   userIdAtom,
   userNameAtom,
 } from "../store/atoms"
+import { getOrCreateClientId } from "../utils/clientId"
 import { loadUserName, saveUserName } from "../utils/localStorage"
 import { isValidRoomId } from "../utils/roomId"
 
@@ -32,7 +33,7 @@ export function RoomPage() {
   const roomState = useAtomValue(roomStateAtom)
   const isConnected = useAtomValue(isConnectedAtom)
   const [errorMessage, setErrorMessage] = useAtom(errorMessageAtom)
-  const { sendMessage } = useWebSocket()
+  const { sendMessage } = useWebSocket(storedRoomId)
   const [nameInput, setNameInput] = useState(() => loadUserName() || "")
   const [hasJoined, setHasJoined] = useState(false)
 
@@ -50,6 +51,7 @@ export function RoomPage() {
         type: "join",
         name: userName,
         roomId: storedRoomId,
+        clientId: getOrCreateClientId(),
       })
       setHasJoined(true)
     }

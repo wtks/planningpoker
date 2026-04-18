@@ -11,7 +11,7 @@ import {
   wsAtom,
 } from "../store/atoms"
 
-export function useWebSocket() {
+export function useWebSocket(roomId: string | null) {
   const [ws, setWs] = useAtom(wsAtom)
   const setIsConnected = useSetAtom(isConnectedAtom)
   const setUserId = useSetAtom(userIdAtom)
@@ -26,13 +26,18 @@ export function useWebSocket() {
   const isManuallyClosedRef = useRef(false)
   const pingIntervalRef = useRef<NodeJS.Timeout>()
   const messageQueueRef = useRef<ClientToServerMessage[]>([])
+  const roomIdRef = useRef<string | null>(roomId)
+  roomIdRef.current = roomId
 
   const connectWebSocket = () => {
     if (isManuallyClosedRef.current) return
+    const currentRoomId = roomIdRef.current
+    if (!currentRoomId) return
 
+    const query = `?roomId=${encodeURIComponent(currentRoomId)}`
     const wsUrl = import.meta.env.DEV
-      ? "ws://localhost:3001/ws"
-      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
+      ? `ws://localhost:5173/ws${query}`
+      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws${query}`
 
     const websocket = new WebSocket(wsUrl)
     websocket.onopen = () => {
@@ -148,6 +153,9 @@ export function useWebSocket() {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Setter functions from atoms don't change
   useEffect(() => {
+    if (!roomId) return
+
+    isManuallyClosedRef.current = false
     // Only create WebSocket if we don't have one
     if (!ws) {
       connectWebSocket()
@@ -165,7 +173,7 @@ export function useWebSocket() {
         ws.close()
       }
     }
-  }, [])
+  }, [roomId])
 
   const sendMessage = (message: ClientToServerMessage) => {
     if (ws && ws.readyState === WebSocket.OPEN) {

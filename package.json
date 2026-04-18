@@ -7,7 +7,7 @@
     "dev:server": "cd server && bun run dev",
     "dev:client": "cd client && bun run dev",
     "build": "cd client && bun run build",
-    "start": "cd server && bun run start",
+    "deploy": "bun run build && cd server && bun run deploy",
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check --write ."

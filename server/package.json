@@ -1,17 +1,17 @@
 {
   "name": "@planningpoker/server",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
   "exports": {
-    ".": "./src/index.ts",
     "./types": "./src/types.ts"
   },
+  "private": true,
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types"
   },
+  "type": "module",
   "devDependencies": {
-    "@types/bun": "latest"
+    "wrangler": "^4.83.0"
   }
 }

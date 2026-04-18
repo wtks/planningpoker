@@ -1,5 +1,6 @@
 export type RoomId = string
 export type UserId = string
+export type ClientId = string
 export type CardValue = 1 | 2 | 3 | 5 | 8 | 13 | 21 | 34 | 55 | 89
 
 export interface User {
@@ -8,9 +9,12 @@ export interface User {
   selectedCard?: CardValue
 }
 
-export interface Room {
-  id: RoomId
-  users: Map<UserId, User>
+export interface StoredUser extends User {
+  clientId: ClientId
+}
+
+export interface PersistedRoomState {
+  users: Record<UserId, StoredUser>
   isRevealed: boolean
   countdownStartedAt?: number
 }
@@ -20,6 +24,7 @@ export type ClientToServerMessage =
       type: "join"
       name: string
       roomId: RoomId
+      clientId: ClientId
     }
   | {
       type: "selectCard"
